@@ -1,9 +1,7 @@
 import os
-import base64
 import streamlit as st
 from google import genai
 from google.genai import types
-from io import BytesIO
 from PIL import Image
 
 # Gemini AI Integrations setup (using Replit AI Integrations)
@@ -19,13 +17,14 @@ client = genai.Client(
 )
 
 
-def analyze_chart_image(image_bytes: bytes, timeframe: str) -> str:
+def analyze_chart_image(image_bytes: bytes, timeframe: str, mime_type: str = "image/png") -> str:
     """
     Gemini 2.5 Flashを使用して株価チャート画像を分析
     
     Args:
         image_bytes: 画像のバイトデータ
         timeframe: チャートの時間軸（日足、週足、月足）
+        mime_type: 画像のMIMEタイプ（image/png, image/jpegなど）
     
     Returns:
         分析結果のテキスト
@@ -81,7 +80,7 @@ def analyze_chart_image(image_bytes: bytes, timeframe: str) -> str:
                 prompt,
                 types.Part(
                     inline_data=types.Blob(
-                        mime_type="image/png",
+                        mime_type=mime_type,
                         data=image_bytes
                     )
                 )
@@ -138,7 +137,8 @@ def main():
                 st.subheader("AI分析中...")
                 with st.spinner("日足チャートを分析しています..."):
                     image_bytes = daily_image.getvalue()
-                    analysis = analyze_chart_image(image_bytes, "日足")
+                    mime_type = daily_image.type
+                    analysis = analyze_chart_image(image_bytes, "日足", mime_type)
                 
                 st.success("分析完了！")
             
@@ -170,7 +170,8 @@ def main():
                 st.subheader("AI分析中...")
                 with st.spinner("週足チャートを分析しています..."):
                     image_bytes = weekly_image.getvalue()
-                    analysis = analyze_chart_image(image_bytes, "週足")
+                    mime_type = weekly_image.type
+                    analysis = analyze_chart_image(image_bytes, "週足", mime_type)
                 
                 st.success("分析完了！")
             
@@ -202,7 +203,8 @@ def main():
                 st.subheader("AI分析中...")
                 with st.spinner("月足チャートを分析しています..."):
                     image_bytes = monthly_image.getvalue()
-                    analysis = analyze_chart_image(image_bytes, "月足")
+                    mime_type = monthly_image.type
+                    analysis = analyze_chart_image(image_bytes, "月足", mime_type)
                 
                 st.success("分析完了！")
             
