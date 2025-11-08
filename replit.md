@@ -1,6 +1,10 @@
 # Overview
 
-This is a stock chart analysis application built with Streamlit that leverages Google's Gemini 2.5 Flash AI model to perform technical analysis on stock price charts. The application accepts chart images and provides detailed technical analysis based on multiple moving averages (SMA), RSI indicators, and volume data. The system is designed to act as an experienced technical analyst, interpreting chart patterns and providing insights on trends, support/resistance levels, and trading signals.
+This is a comprehensive stock trading analysis application built with Streamlit that combines:
+1. **AI-powered chart analysis** using Google's Gemini 2.5 Flash to perform technical analysis on stock price charts with multiple moving averages (SMA), RSI indicators, and volume data
+2. **Realized profit/loss visualization** that processes trading data from CSV files to display cumulative performance, ticker-wise analysis, and statistical insights
+
+The system serves as both a technical analyst for chart interpretation and a performance tracker for realized trading results.
 
 # User Preferences
 
@@ -11,7 +15,9 @@ Preferred communication style: Simple, everyday language.
 ## Frontend Architecture
 - **Framework**: Streamlit - A Python-based web application framework chosen for its simplicity in creating data-driven applications with minimal frontend code
 - **Image Processing**: PIL (Python Imaging Library) - Handles image upload and preprocessing before sending to the AI model
-- **Rationale**: Streamlit provides rapid prototyping capabilities and built-in components for file uploads, making it ideal for an AI-powered analysis tool
+- **Data Visualization**: Plotly - Interactive charting library for realized profit/loss graphs and ticker analysis
+- **Data Processing**: Pandas - DataFrame manipulation for CSV data analysis with Shift-JIS encoding support
+- **Rationale**: Streamlit provides rapid prototyping capabilities and built-in components for file uploads, making it ideal for an AI-powered analysis tool combined with financial data visualization
 
 ## Backend Architecture
 - **Language**: Python - Selected for its strong ecosystem in data analysis, AI/ML integration, and financial applications
@@ -33,11 +39,32 @@ Preferred communication style: Simple, everyday language.
   - `AI_INTEGRATIONS_GEMINI_BASE_URL`: Custom endpoint configuration for Replit's AI integration proxy
 - **Custom HTTP Options**: Configured with empty `api_version` and custom `base_url` to work with Replit's integration layer
 
-## Technical Indicators Analyzed
-The system is designed to analyze charts containing:
+## Application Features
+
+### Chart Analysis (Tabs 1-3: Daily, Weekly, Monthly)
+The system analyzes charts containing:
 1. **Moving Averages** (5 different periods: 5, 20, 60, 100, 200) - Multi-timeframe trend identification
 2. **RSI (Relative Strength Index)** - Overbought/oversold conditions
 3. **Volume Data** - Trading activity confirmation
+
+### Realized Profit/Loss Analysis (Tab 4)
+Added November 2025 - Visualizes trading performance from CSV data:
+1. **Data Import**: 
+   - Supports both yen-based (円ベース) and dollar-based (ドルベース) CSV files
+   - Handles Shift-JIS encoding common in Japanese financial exports
+   - Automatic date parsing and numeric conversion with comma handling
+2. **Visualizations**:
+   - **Cumulative P/L Chart**: Time-series line graph showing cumulative realized profit/loss progression
+   - **Ticker P/L Analysis**: Horizontal bar chart displaying profit/loss by individual ticker symbol (color-coded: green for profits, red for losses)
+3. **Statistical Metrics**:
+   - Total realized P/L
+   - Average P/L per trade
+   - Win rate (percentage of profitable trades)
+   - Total number of trades
+4. **Data Functions**:
+   - `load_realized_pl_csv()`: Loads and parses CSV with Shift-JIS encoding, handles date columns
+   - `create_cumulative_pl_chart()`: Generates interactive cumulative P/L visualization
+   - `create_ticker_pl_chart()`: Creates ticker-wise P/L comparison chart
 
 # External Dependencies
 
@@ -52,6 +79,8 @@ The system is designed to analyze charts containing:
 - **streamlit**: Web application framework for the user interface
 - **google-genai**: Official Google SDK for Gemini API integration
 - **Pillow (PIL)**: Image processing and manipulation
+- **pandas**: Data manipulation and CSV processing with encoding support
+- **plotly**: Interactive charting for realized P/L visualizations
 - **os**: Environment variable access for configuration management
 
 ## Platform Dependencies

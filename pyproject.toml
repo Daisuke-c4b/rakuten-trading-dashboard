@@ -6,6 +6,9 @@ requires-python = ">=3.11"
 dependencies = [
     "google-genai>=1.49.0",
     "openai>=2.7.1",
+    "pandas>=2.3.3",
+    "plotly>=6.4.0",
+    "sift-stack-py>=0.9.1",
     "streamlit>=1.51.0",
     "tenacity>=9.1.2",
 ]

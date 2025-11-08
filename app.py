@@ -1,8 +1,12 @@
 import os
 import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
 from google import genai
 from google.genai import types
 from PIL import Image
+from io import StringIO
 
 # Gemini AI Integrations setup (using Replit AI Integrations)
 AI_INTEGRATIONS_GEMINI_API_KEY = os.environ.get("AI_INTEGRATIONS_GEMINI_API_KEY")
@@ -15,6 +19,133 @@ client = genai.Client(
         'base_url': AI_INTEGRATIONS_GEMINI_BASE_URL   
     }
 )
+
+
+def load_realized_pl_csv(uploaded_file, encoding='shift-jis'):
+    """
+    実現損益CSVファイルを読み込む
+    
+    Args:
+        uploaded_file: Streamlitのアップロードファイル
+        encoding: ファイルのエンコーディング（デフォルト: shift-jis）
+    
+    Returns:
+        pandas DataFrame
+    """
+    try:
+        content = uploaded_file.getvalue().decode(encoding)
+        df = pd.read_csv(StringIO(content))
+        
+        if '約定日' in df.columns:
+            df['約定日'] = pd.to_datetime(df['約定日'], format='%Y/%m/%d', errors='coerce')
+        if '受渡日' in df.columns:
+            df['受渡日'] = pd.to_datetime(df['受渡日'], format='%Y/%m/%d', errors='coerce')
+        if '決済日' in df.columns:
+            df['決済日'] = pd.to_datetime(df['決済日'], format='%Y/%m/%d', errors='coerce')
+        
+        return df
+    except Exception as e:
+        st.error(f"CSVファイルの読み込みに失敗しました: {str(e)}")
+        return None
+
+
+def create_cumulative_pl_chart(df, currency_label):
+    """
+    累積実現損益のグラフを作成
+    
+    Args:
+        df: 実現損益データフレーム
+        currency_label: 通貨ラベル（円ベース/ドルベース）
+    
+    Returns:
+        Plotly figure
+    """
+    pl_col = None
+    for col in df.columns:
+        if '実現損益' in col or '損益' in col:
+            pl_col = col
+            break
+    
+    if pl_col is None:
+        return None
+    
+    df_sorted = df.sort_values('約定日').copy()
+    
+    df_sorted[pl_col] = pd.to_numeric(df_sorted[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+    
+    df_sorted['累積損益'] = df_sorted[pl_col].cumsum()
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_sorted['約定日'],
+        y=df_sorted['累積損益'],
+        mode='lines+markers',
+        name='累積実現損益',
+        line=dict(color='#1f77b4', width=2),
+        marker=dict(size=6),
+        fill='tozeroy',
+        fillcolor='rgba(31, 119, 180, 0.2)'
+    ))
+    
+    fig.update_layout(
+        title=f'累積実現損益の推移 ({currency_label})',
+        xaxis_title='約定日',
+        yaxis_title=f'累積損益 ({currency_label})',
+        hovermode='x unified',
+        height=500,
+        template='plotly_white'
+    )
+    
+    return fig
+
+
+def create_ticker_pl_chart(df, currency_label):
+    """
+    銘柄別実現損益のグラフを作成
+    
+    Args:
+        df: 実現損益データフレーム
+        currency_label: 通貨ラベル（円ベース/ドルベース）
+    
+    Returns:
+        Plotly figure
+    """
+    pl_col = None
+    for col in df.columns:
+        if '実現損益' in col or '損益' in col:
+            pl_col = col
+            break
+    
+    if pl_col is None or 'ティッカー' not in df.columns:
+        return None
+    
+    df[pl_col] = pd.to_numeric(df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+    
+    ticker_pl = df.groupby('ティッカー')[pl_col].sum().sort_values()
+    
+    colors = ['red' if x < 0 else 'green' for x in ticker_pl.values]
+    
+    fig = go.Figure(go.Bar(
+        x=ticker_pl.values,
+        y=ticker_pl.index,
+        orientation='h',
+        marker=dict(color=colors),
+        text=ticker_pl.values,
+        texttemplate='%{text:,.0f}',
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        title=f'銘柄別実現損益 ({currency_label})',
+        xaxis_title=f'実現損益 ({currency_label})',
+        yaxis_title='ティッカー',
+        height=max(400, len(ticker_pl) * 30),
+        template='plotly_white',
+        showlegend=False
+    )
+    
+    return fig
 
 
 def analyze_chart_image(image_bytes: bytes, timeframe: str, mime_type: str = "image/png") -> str:
@@ -110,8 +241,8 @@ def main():
     
     st.divider()
     
-    # 3つの時間軸用のタブを作成
-    tab1, tab2, tab3 = st.tabs(["📊 日足チャート", "📊 週足チャート", "📊 月足チャート"])
+    # 4つのタブを作成（3つの時間軸 + 実現損益）
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 日足チャート", "📊 週足チャート", "📊 月足チャート", "💰 実現損益分析"])
     
     # 日足チャート
     with tab1:
@@ -212,9 +343,115 @@ def main():
             st.subheader("📋 月足チャート分析結果")
             st.markdown(analysis)
     
+    # 実現損益分析
+    with tab4:
+        st.header("💰 実現損益分析")
+        st.markdown("**取引の実現損益を可視化して、パフォーマンスを把握します**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("円ベースデータ")
+            yen_csv = st.file_uploader(
+                "円ベースCSVファイルをアップロード",
+                type=["csv"],
+                key="yen_csv",
+                help="円建ての実現損益CSVファイルを選択"
+            )
+        
+        with col2:
+            st.subheader("ドルベースデータ")
+            dollar_csv = st.file_uploader(
+                "ドルベースCSVファイルをアップロード",
+                type=["csv"],
+                key="dollar_csv",
+                help="ドル建ての実現損益CSVファイルを選択"
+            )
+        
+        st.divider()
+        
+        if yen_csv is not None:
+            st.subheader("📊 円ベース実現損益分析")
+            
+            yen_df = load_realized_pl_csv(yen_csv)
+            
+            if yen_df is not None:
+                pl_col = None
+                for col in yen_df.columns:
+                    if '実現損益' in col or '損益' in col:
+                        pl_col = col
+                        break
+                
+                if pl_col:
+                    yen_df[pl_col] = pd.to_numeric(yen_df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    total_pl = yen_df[pl_col].sum()
+                    avg_pl = yen_df[pl_col].mean()
+                    win_count = (yen_df[pl_col] > 0).sum()
+                    lose_count = (yen_df[pl_col] < 0).sum()
+                    win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("総実現損益", f"¥{total_pl:,.0f}")
+                    with col2:
+                        st.metric("平均損益", f"¥{avg_pl:,.0f}")
+                    with col3:
+                        st.metric("勝率", f"{win_rate:.1f}%")
+                    with col4:
+                        st.metric("取引回数", f"{len(yen_df)}回")
+                    
+                    st.plotly_chart(create_cumulative_pl_chart(yen_df, "円"), use_container_width=True)
+                    
+                    st.plotly_chart(create_ticker_pl_chart(yen_df, "円"), use_container_width=True)
+                    
+                    with st.expander("📋 データテーブル"):
+                        st.dataframe(yen_df, use_container_width=True)
+        
+        if dollar_csv is not None:
+            st.subheader("📊 ドルベース実現損益分析")
+            
+            dollar_df = load_realized_pl_csv(dollar_csv)
+            
+            if dollar_df is not None:
+                pl_col = None
+                for col in dollar_df.columns:
+                    if '実現損益' in col or '損益' in col:
+                        pl_col = col
+                        break
+                
+                if pl_col:
+                    dollar_df[pl_col] = pd.to_numeric(dollar_df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    total_pl = dollar_df[pl_col].sum()
+                    avg_pl = dollar_df[pl_col].mean()
+                    win_count = (dollar_df[pl_col] > 0).sum()
+                    lose_count = (dollar_df[pl_col] < 0).sum()
+                    win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("総実現損益", f"${total_pl:,.2f}")
+                    with col2:
+                        st.metric("平均損益", f"${avg_pl:,.2f}")
+                    with col3:
+                        st.metric("勝率", f"{win_rate:.1f}%")
+                    with col4:
+                        st.metric("取引回数", f"{len(dollar_df)}回")
+                    
+                    st.plotly_chart(create_cumulative_pl_chart(dollar_df, "USD"), use_container_width=True)
+                    
+                    st.plotly_chart(create_ticker_pl_chart(dollar_df, "USD"), use_container_width=True)
+                    
+                    with st.expander("📋 データテーブル"):
+                        st.dataframe(dollar_df, use_container_width=True)
+        
+        if yen_csv is None and dollar_csv is None:
+            st.info("💡 円ベースまたはドルベースのCSVファイルをアップロードして、実現損益を分析してください。")
+    
     # サイドバーに使い方を表示
     with st.sidebar:
         st.header("📖 使い方")
+        
+        st.subheader("チャート分析")
         st.markdown("""
         1. **チャート画像を準備**  
            日足、週足、月足のいずれかのチャート画像を用意
@@ -229,15 +466,36 @@ def main():
            AIによる詳細なテクニカル分析を確認
         """)
         
+        st.subheader("実現損益分析")
+        st.markdown("""
+        1. **CSVファイルを準備**  
+           円ベース・ドルベースの実現損益CSV
+        
+        2. **実現損益分析タブを選択**  
+           💰実現損益分析タブをクリック
+        
+        3. **CSVファイルをアップロード**  
+           円ベース・ドルベースそれぞれアップロード
+        
+        4. **可視化結果を確認**  
+           累積損益、銘柄別損益、統計データを確認
+        """)
+        
         st.divider()
         
         st.header("📊 分析内容")
         st.markdown("""
-        - **トレンド分析**: 現在の市場動向
-        - **移動平均線**: 5本のSMAの位置関係
-        - **RSI**: 買われすぎ/売られすぎ判定
-        - **出来高**: ボリューム動向分析
-        - **総合判断**: 戦略的アドバイス
+        **チャート分析:**
+        - トレンド分析: 現在の市場動向
+        - 移動平均線: 5本のSMAの位置関係
+        - RSI: 買われすぎ/売られすぎ判定
+        - 出来高: ボリューム動向分析
+        - 総合判断: 戦略的アドバイス
+        
+        **実現損益分析:**
+        - 累積損益推移グラフ
+        - 銘柄別損益分析
+        - 勝率・平均損益などの統計
         """)
         
         st.divider()
