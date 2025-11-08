@@ -400,9 +400,17 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{len(yen_df)}回")
                     
-                    st.plotly_chart(create_cumulative_pl_chart(yen_df, "円"), use_container_width=True)
+                    cumulative_chart = create_cumulative_pl_chart(yen_df, "円")
+                    if cumulative_chart is not None:
+                        st.plotly_chart(cumulative_chart, use_container_width=True)
+                    else:
+                        st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
                     
-                    st.plotly_chart(create_ticker_pl_chart(yen_df, "円"), use_container_width=True)
+                    ticker_chart = create_ticker_pl_chart(yen_df, "円")
+                    if ticker_chart is not None:
+                        st.plotly_chart(ticker_chart, use_container_width=True)
+                    else:
+                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」列が含まれているか確認してください。")
                     
                     with st.expander("📋 データテーブル"):
                         st.dataframe(yen_df, use_container_width=True)
@@ -437,9 +445,17 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{len(dollar_df)}回")
                     
-                    st.plotly_chart(create_cumulative_pl_chart(dollar_df, "USD"), use_container_width=True)
+                    cumulative_chart = create_cumulative_pl_chart(dollar_df, "USD")
+                    if cumulative_chart is not None:
+                        st.plotly_chart(cumulative_chart, use_container_width=True)
+                    else:
+                        st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
                     
-                    st.plotly_chart(create_ticker_pl_chart(dollar_df, "USD"), use_container_width=True)
+                    ticker_chart = create_ticker_pl_chart(dollar_df, "USD")
+                    if ticker_chart is not None:
+                        st.plotly_chart(ticker_chart, use_container_width=True)
+                    else:
+                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」列が含まれているか確認してください。")
                     
                     with st.expander("📋 データテーブル"):
                         st.dataframe(dollar_df, use_container_width=True)
