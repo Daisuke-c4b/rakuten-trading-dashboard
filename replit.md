@@ -62,18 +62,30 @@ Added November 2025 - Visualizes trading performance from CSV data:
    - Average P/L per trade
    - Win rate (percentage of profitable trades)
    - Total number of trades
-4. **Individual Stock Detail Analysis** (New):
+4. **Individual Stock Detail Analysis**:
    - Expandable sections for each ticker showing:
      - **Purchase Information**: USD/JPY acquisition price, purchase quantity
      - **Sale Information**: USD/JPY sale price, sale quantity
      - **Investment Results**: P/L, total acquisition cost, settlement amount, P/L rate
+   - **Per-Execution-Date Breakdown** (Added November 2025):
+     - Within each ticker, displays metrics grouped by execution date (約定日)
+     - Shows purchase/sale/investment results for each trading date
+     - Quantity-weighted averages calculated per date
+     - Handles both yen-based and dollar-based data with proper currency column selection
+     - Graceful fallback when USD data is missing
    - Transaction history table per ticker
    - Automated calculation of performance metrics per stock
+   - Empty DataFrame handling to prevent IndexError
 5. **Data Functions**:
    - `load_realized_pl_csv()`: Loads and parses CSV with Shift-JIS encoding, handles date columns
    - `create_cumulative_pl_chart()`: Generates interactive cumulative P/L visualization
    - `create_ticker_pl_chart()`: Creates ticker-wise P/L comparison chart
    - `display_ticker_details()`: Displays detailed per-ticker analysis with purchase/sale/results metrics
+     - Includes per-execution-date breakdown with expandable sections
+     - Quantity-weighted average calculations for multi-transaction tickers
+     - Exchange rate estimation from yen/USD sale amount data
+     - Robust handling of missing USD columns with "データなし" display
+     - Empty DataFrame validation to prevent IndexError
 
 # External Dependencies
 

@@ -127,8 +127,12 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
     for ticker in tickers:
         ticker_data = df[df[ticker_col] == ticker].copy()
         
+        # ticker_dataが空の場合はスキップ
+        if ticker_data.empty:
+            continue
+        
         # 銘柄名を取得
-        stock_name = ticker_data['銘柄名'].iloc[0] if '銘柄名' in ticker_data.columns else ticker
+        stock_name = ticker_data['銘柄名'].iloc[0] if '銘柄名' in ticker_data.columns and len(ticker_data) > 0 else ticker
         
         with st.expander(f"**{ticker}** - {stock_name}"):
             # 数値列の変換
@@ -274,6 +278,110 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
                 st.metric("取得総額", f"{currency_symbol}{total_acquisition:,.2f}")
                 st.metric("受渡金額", f"{currency_symbol}{total_sell_amount:,.2f}")
                 st.metric("損益率", f"{pl_rate:,.2f}%")
+            
+            # 約定日別サマリー
+            execution_date_col = None
+            for col in ticker_data.columns:
+                if '約定日' in col:
+                    execution_date_col = col
+                    break
+            
+            if execution_date_col and execution_date_col in ticker_data.columns:
+                st.markdown("**📅 約定日別サマリー**")
+                
+                # 約定日でグループ化（NaT や空の値は除外）
+                date_groups = ticker_data[ticker_data[execution_date_col].notna()].groupby(execution_date_col)
+                
+                # 各約定日ごとに表示
+                for exec_date, date_data in date_groups:
+                    with st.expander(f"📆 {exec_date}"):
+                        # 数量を計算
+                        date_quantity = date_data['数量[株]'].sum() if '数量[株]' in date_data.columns else 0
+                        
+                        # 取得価格（数量加重平均）
+                        if acq_price_col and '数量[株]' in date_data.columns:
+                            date_quantities = date_data['数量[株]']
+                            date_acq_prices = date_data[acq_price_col[0]]
+                            date_weighted_acq = (date_acq_prices * date_quantities).sum() / date_quantities.sum() if date_quantities.sum() > 0 else 0
+                        else:
+                            date_weighted_acq = 0
+                        
+                        # 売却単価（数量加重平均）
+                        if sell_price_usd_col and '数量[株]' in date_data.columns:
+                            date_quantities = date_data['数量[株]']
+                            date_sell_prices = date_data[sell_price_usd_col[0]]
+                            date_weighted_sell = (date_sell_prices * date_quantities).sum() / date_quantities.sum() if date_quantities.sum() > 0 else 0
+                        else:
+                            date_weighted_sell = 0
+                        
+                        # 取得総額
+                        date_acq_total = date_weighted_acq * date_quantity
+                        
+                        # 売却額
+                        date_sell_amount = date_data[sell_amount_col[0]].sum() if sell_amount_col else 0
+                        
+                        # 損益
+                        date_pl = date_data[pl_col[0]].sum() if pl_col else 0
+                        
+                        # 損益率
+                        date_pl_rate = (date_pl / date_acq_total * 100) if date_acq_total != 0 else 0
+                        
+                        # 為替レート推定（円ベースの場合）
+                        date_fx_rate = 0
+                        if is_yen_base:
+                            date_sell_amount_usd = date_data[sell_amount_usd_col[0]].sum() if sell_amount_usd_col else 0
+                            if date_sell_amount_usd > 0:
+                                date_fx_rate = date_sell_amount / date_sell_amount_usd
+                                date_acq_usd = date_weighted_acq / date_fx_rate if date_fx_rate > 0 else 0
+                                date_has_usd = True
+                            else:
+                                date_acq_usd = 0
+                                date_has_usd = False
+                            date_sell_yen = date_sell_amount / date_quantity if date_quantity > 0 else 0
+                            
+                            # USD売却単価が取得できなかった場合
+                            if date_weighted_sell == 0 and date_sell_yen > 0 and date_fx_rate > 0:
+                                date_weighted_sell = date_sell_yen / date_fx_rate
+                        else:
+                            date_acq_usd = date_weighted_acq
+                            date_sell_yen = 0
+                            date_has_usd = True
+                        
+                        # 3列レイアウトで表示
+                        d_col1, d_col2, d_col3 = st.columns(3)
+                        
+                        with d_col1:
+                            st.markdown("**📊 購入時**")
+                            if is_yen_base:
+                                st.metric("¥取得単価", f"¥{date_weighted_acq:,.2f}")
+                                if date_has_usd and date_acq_usd > 0:
+                                    st.metric("$取得単価", f"${date_acq_usd:,.2f}")
+                                else:
+                                    st.metric("$取得単価", "データなし")
+                            else:
+                                st.metric("$取得単価", f"${date_weighted_acq:,.2f}")
+                            st.metric("購入株数", f"{date_quantity:,.0f}株")
+                        
+                        with d_col2:
+                            st.markdown("**📉 売却時**")
+                            if date_has_usd and date_weighted_sell > 0:
+                                st.metric("$売却単価", f"${date_weighted_sell:,.2f}")
+                            elif is_yen_base:
+                                st.metric("$売却単価", "データなし")
+                            else:
+                                date_sell_price_base = date_sell_amount / date_quantity if date_quantity > 0 else 0
+                                st.metric("$売却単価", f"${date_sell_price_base:,.2f}")
+                            
+                            if is_yen_base:
+                                st.metric("¥売却単価", f"¥{date_sell_yen:,.2f}")
+                            st.metric("売却株数", f"{date_quantity:,.0f}株")
+                        
+                        with d_col3:
+                            st.markdown("**💰 投資結果**")
+                            st.metric("損益", f"{currency_symbol}{date_pl:,.2f}", delta=f"{date_pl_rate:,.2f}%")
+                            st.metric("取得総額", f"{currency_symbol}{date_acq_total:,.2f}")
+                            st.metric("受渡金額", f"{currency_symbol}{date_sell_amount:,.2f}")
+                            st.metric("損益率", f"{date_pl_rate:,.2f}%")
             
             # 取引履歴テーブル
             st.markdown("**📋 取引履歴**")
