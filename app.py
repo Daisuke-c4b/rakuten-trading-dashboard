@@ -206,6 +206,7 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
             
             # 為替レートを推定（円ベースの場合）
             has_usd_data = False
+            estimated_exchange_rate = 0
             if is_yen_base:
                 # 円ベース売却額（円）÷ ドルベース売却額（USD）で為替レートを推定
                 if total_sell_amount_usd > 0:
@@ -327,21 +328,21 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
                         date_pl_rate = (date_pl / date_acq_total * 100) if date_acq_total != 0 else 0
                         
                         # 為替レート推定（円ベースの場合）
-                        date_fx_rate = 0
+                        # ティッカー全体の為替レートを使用
                         if is_yen_base:
-                            date_sell_amount_usd = date_data[sell_amount_usd_col[0]].sum() if sell_amount_usd_col else 0
-                            if date_sell_amount_usd > 0:
-                                date_fx_rate = date_sell_amount / date_sell_amount_usd
-                                date_acq_usd = date_weighted_acq / date_fx_rate if date_fx_rate > 0 else 0
+                            date_sell_yen = date_sell_amount / date_quantity if date_quantity > 0 else 0
+                            
+                            # ティッカー全体の為替レートを使用
+                            if estimated_exchange_rate > 0:
+                                date_acq_usd = date_weighted_acq / estimated_exchange_rate
                                 date_has_usd = True
+                                
+                                # USD売却単価を計算
+                                if date_weighted_sell == 0 and date_sell_yen > 0:
+                                    date_weighted_sell = date_sell_yen / estimated_exchange_rate
                             else:
                                 date_acq_usd = 0
                                 date_has_usd = False
-                            date_sell_yen = date_sell_amount / date_quantity if date_quantity > 0 else 0
-                            
-                            # USD売却単価が取得できなかった場合
-                            if date_weighted_sell == 0 and date_sell_yen > 0 and date_fx_rate > 0:
-                                date_weighted_sell = date_sell_yen / date_fx_rate
                         else:
                             date_acq_usd = date_weighted_acq
                             date_sell_yen = 0
@@ -695,7 +696,30 @@ def main():
                     # NaN値を除外して計算
                     pl_values = yen_df_calc[pl_col].dropna()
                     total_pl = pl_values.sum()
-                    avg_pl = pl_values.mean()
+                    
+                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数
+                    ticker_col = None
+                    for col in yen_df.columns:
+                        if 'ティッカー' in col:
+                            ticker_col = col
+                            break
+                    
+                    execution_date_col = None
+                    for col in yen_df.columns:
+                        if '約定日' in col:
+                            execution_date_col = col
+                            break
+                    
+                    if ticker_col and execution_date_col:
+                        # ティッカー × 約定日でユニークにカウント
+                        trade_count = yen_df_calc[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                    else:
+                        # フォールバック：全行数
+                        trade_count = len(yen_df_calc)
+                    
+                    # 平均損益 = 総実現損益 ÷ 取引回数
+                    avg_pl = total_pl / trade_count if trade_count > 0 else 0
+                    
                     win_count = (pl_values > 0).sum()
                     lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
@@ -708,7 +732,7 @@ def main():
                     with col3:
                         st.metric("勝率", f"{win_rate:.1f}%")
                     with col4:
-                        st.metric("取引回数", f"{len(yen_df)}回")
+                        st.metric("取引回数", f"{trade_count}回")
                     
                     cumulative_chart = create_cumulative_pl_chart(yen_df, "円")
                     if cumulative_chart is not None:
@@ -748,7 +772,30 @@ def main():
                     # NaN値を除外して計算
                     pl_values = dollar_df_calc[pl_col].dropna()
                     total_pl = pl_values.sum()
-                    avg_pl = pl_values.mean()
+                    
+                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数
+                    ticker_col = None
+                    for col in dollar_df.columns:
+                        if 'ティッカー' in col:
+                            ticker_col = col
+                            break
+                    
+                    execution_date_col = None
+                    for col in dollar_df.columns:
+                        if '約定日' in col:
+                            execution_date_col = col
+                            break
+                    
+                    if ticker_col and execution_date_col:
+                        # ティッカー × 約定日でユニークにカウント
+                        trade_count = dollar_df_calc[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                    else:
+                        # フォールバック：全行数
+                        trade_count = len(dollar_df_calc)
+                    
+                    # 平均損益 = 総実現損益 ÷ 取引回数
+                    avg_pl = total_pl / trade_count if trade_count > 0 else 0
+                    
                     win_count = (pl_values > 0).sum()
                     lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
@@ -761,7 +808,7 @@ def main():
                     with col3:
                         st.metric("勝率", f"{win_rate:.1f}%")
                     with col4:
-                        st.metric("取引回数", f"{len(dollar_df)}回")
+                        st.metric("取引回数", f"{trade_count}回")
                     
                     cumulative_chart = create_cumulative_pl_chart(dollar_df, "USD")
                     if cumulative_chart is not None:
