@@ -49,13 +49,14 @@ def load_realized_pl_csv(uploaded_file, encoding='shift-jis'):
         return None
 
 
-def create_cumulative_pl_chart(df, currency_label):
+def create_cumulative_pl_chart(df, currency_label, grouping='daily'):
     """
     累積実現損益のグラフを作成
     
     Args:
         df: 実現損益データフレーム
         currency_label: 通貨ラベル（円ベース/ドルベース）
+        grouping: グループ化の単位（'daily', 'monthly', 'yearly'）
     
     Returns:
         Plotly figure
@@ -73,13 +74,37 @@ def create_cumulative_pl_chart(df, currency_label):
     
     df_sorted[pl_col] = pd.to_numeric(df_sorted[pl_col].astype(str).str.replace(',', ''), errors='coerce')
     
-    df_sorted['累積損益'] = df_sorted[pl_col].cumsum()
+    # グループ化の処理
+    if grouping == 'monthly':
+        # 月次グループ化
+        df_sorted['期間'] = pd.to_datetime(df_sorted['約定日']).dt.to_period('M')
+        grouped = df_sorted.groupby('期間')[pl_col].sum().reset_index()
+        grouped['約定日'] = grouped['期間'].dt.to_timestamp()
+        grouped['累積損益'] = grouped[pl_col].cumsum()
+        x_data = grouped['約定日']
+        y_data = grouped['累積損益']
+        x_title = '年月'
+    elif grouping == 'yearly':
+        # 年次グループ化
+        df_sorted['期間'] = pd.to_datetime(df_sorted['約定日']).dt.to_period('Y')
+        grouped = df_sorted.groupby('期間')[pl_col].sum().reset_index()
+        grouped['約定日'] = grouped['期間'].dt.to_timestamp()
+        grouped['累積損益'] = grouped[pl_col].cumsum()
+        x_data = grouped['約定日']
+        y_data = grouped['累積損益']
+        x_title = '年'
+    else:  # daily
+        # 日次（デフォルト）
+        df_sorted['累積損益'] = df_sorted[pl_col].cumsum()
+        x_data = df_sorted['約定日']
+        y_data = df_sorted['累積損益']
+        x_title = '約定日'
     
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=df_sorted['約定日'],
-        y=df_sorted['累積損益'],
+        x=x_data,
+        y=y_data,
         mode='lines+markers',
         name='累積実現損益',
         line=dict(color='#1f77b4', width=2),
@@ -88,9 +113,11 @@ def create_cumulative_pl_chart(df, currency_label):
         fillcolor='rgba(31, 119, 180, 0.2)'
     ))
     
+    grouping_label = {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[grouping]
+    
     fig.update_layout(
-        title=f'累積実現損益の推移 ({currency_label})',
-        xaxis_title='約定日',
+        title=f'累積実現損益の推移 ({currency_label}) - {grouping_label}',
+        xaxis_title=x_title,
         yaxis_title=f'累積損益 ({currency_label})',
         hovermode='x unified',
         height=500,
@@ -724,7 +751,17 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{trade_count}回")
                     
-                    cumulative_chart = create_cumulative_pl_chart(yen_df_data, "円")
+                    # 累積損益グラフのグループ化選択
+                    st.subheader("📊 累積実現損益の推移")
+                    grouping_yen = st.radio(
+                        "表示単位を選択",
+                        options=['daily', 'monthly', 'yearly'],
+                        format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
+                        key='grouping_yen',
+                        horizontal=True
+                    )
+                    
+                    cumulative_chart = create_cumulative_pl_chart(yen_df_data, "円", grouping=grouping_yen)
                     if cumulative_chart is not None:
                         st.plotly_chart(cumulative_chart, use_container_width=True)
                     else:
@@ -805,7 +842,17 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{trade_count}回")
                     
-                    cumulative_chart = create_cumulative_pl_chart(dollar_df_data, "USD")
+                    # 累積損益グラフのグループ化選択
+                    st.subheader("📊 累積実現損益の推移")
+                    grouping_dollar = st.radio(
+                        "表示単位を選択",
+                        options=['daily', 'monthly', 'yearly'],
+                        format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
+                        key='grouping_dollar',
+                        horizontal=True
+                    )
+                    
+                    cumulative_chart = create_cumulative_pl_chart(dollar_df_data, "USD", grouping=grouping_dollar)
                     if cumulative_chart is not None:
                         st.plotly_chart(cumulative_chart, use_container_width=True)
                     else:
