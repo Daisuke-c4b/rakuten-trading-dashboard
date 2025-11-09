@@ -53,20 +53,30 @@ Added November 2025 - Visualizes trading performance from CSV data:
    - Supports both yen-based (円ベース) and dollar-based (ドルベース) CSV files
    - Handles Shift-JIS encoding common in Japanese financial exports
    - Automatic date parsing and numeric conversion with comma handling
-   - Robust NaN handling for accurate calculations
-2. **Visualizations**:
-   - **Cumulative P/L Chart**: Time-series line graph showing cumulative realized profit/loss progression
-   - **Ticker P/L Analysis**: Horizontal bar chart displaying profit/loss by individual ticker symbol (color-coded: green for profits, red for losses)
-3. **Statistical Metrics**:
-   - Total realized P/L (with NaN exclusion for accuracy)
-   - Average P/L per trade
+   - CSV summary row handling: Total P/L read from K column's final row, summary row excluded from trade counts and aggregations
+2. **UI Layout** (Updated November 9, 2025):
+   - Tabbed interface for switching between yen-base and dollar-base views
+   - File uploaders remain at the top for both currency types
+   - Each tab shows informative messages when CSV is not uploaded
+3. **Visualizations**:
+   - **Cumulative P/L Chart** (Enhanced November 9, 2025): 
+     - Time-series line graph showing cumulative realized profit/loss progression
+     - Grouping options: Daily (default), Monthly, or Yearly aggregation
+     - Radio button selector for switching between time periods
+   - **Ticker P/L Analysis**: 
+     - Horizontal bar chart displaying profit/loss by individual ticker symbol (color-coded: green for profits, red for losses)
+     - USD values display with 2 decimal places, JPY values display as integers
+4. **Statistical Metrics**:
+   - Total realized P/L: Read from K column's final row (summary row)
+   - Average P/L per trade: Calculated as total P/L ÷ trade count
    - Win rate (percentage of profitable trades)
-   - Total number of trades
-4. **Individual Stock Detail Analysis**:
+   - Total number of trades: Unique ticker × execution date combinations (excluding summary row)
+5. **Individual Stock Detail Analysis** (Updated November 9, 2025):
    - Expandable sections for each ticker showing:
-     - **Purchase Information**: USD/JPY acquisition price, purchase quantity
-     - **Sale Information**: USD/JPY sale price, sale quantity
+     - **Purchase Information**: Acquisition price (currency-specific), purchase quantity
+     - **Sale Information**: Sale price (currency-specific), sale quantity
      - **Investment Results**: P/L, total acquisition cost, settlement amount, P/L rate
+     - Yen-base data displays only ¥ metrics; dollar-base data displays $ metrics
    - **Per-Execution-Date Breakdown** (Added November 2025):
      - Within each ticker, displays metrics grouped by execution date (約定日)
      - Shows purchase/sale/investment results for each trading date
@@ -76,10 +86,10 @@ Added November 2025 - Visualizes trading performance from CSV data:
    - Transaction history table per ticker
    - Automated calculation of performance metrics per stock
    - Empty DataFrame handling to prevent IndexError
-5. **Data Functions**:
+6. **Data Functions**:
    - `load_realized_pl_csv()`: Loads and parses CSV with Shift-JIS encoding, handles date columns
-   - `create_cumulative_pl_chart()`: Generates interactive cumulative P/L visualization
-   - `create_ticker_pl_chart()`: Creates ticker-wise P/L comparison chart
+   - `create_cumulative_pl_chart(df, currency_label, grouping='daily')`: Generates interactive cumulative P/L visualization with daily/monthly/yearly grouping options
+   - `create_ticker_pl_chart(df, currency_label)`: Creates ticker-wise P/L comparison chart with currency-specific formatting (USD: 2 decimals, JPY: integers)
    - `display_ticker_details()`: Displays detailed per-ticker analysis with purchase/sale/results metrics
      - Includes per-execution-date breakdown with expandable sections
      - Quantity-weighted average calculations for multi-transaction tickers
