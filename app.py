@@ -759,11 +759,14 @@ def main():
                     dollar_df_calc = dollar_df.copy()
                     dollar_df_calc[pl_col] = pd.to_numeric(dollar_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
                     
-                    # NaN値を除外して計算
-                    pl_values = dollar_df_calc[pl_col].dropna()
-                    total_pl = pl_values.sum()
+                    # 総実現損益：K列の最終行から取得
+                    total_pl = dollar_df_calc[pl_col].iloc[-1] if len(dollar_df_calc) > 0 else 0
                     
-                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数
+                    # 最終行を除いたデータで各種計算を行う
+                    dollar_df_data = dollar_df.iloc[:-1].copy()
+                    dollar_df_data_calc = dollar_df_calc.iloc[:-1].copy()
+                    
+                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行除く）
                     ticker_col = None
                     for col in dollar_df.columns:
                         if 'ティッカー' in col:
@@ -777,15 +780,17 @@ def main():
                             break
                     
                     if ticker_col and execution_date_col:
-                        # ティッカー × 約定日でユニークにカウント
-                        trade_count = dollar_df_calc[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                        # ティッカー × 約定日でユニークにカウント（最終行を除く）
+                        trade_count = dollar_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
                     else:
-                        # フォールバック：全行数
-                        trade_count = len(dollar_df_calc)
+                        # フォールバック：全行数（最終行を除く）
+                        trade_count = len(dollar_df_data)
                     
                     # 平均損益 = 総実現損益 ÷ 取引回数
                     avg_pl = total_pl / trade_count if trade_count > 0 else 0
                     
+                    # 勝率計算（最終行を除いたデータで計算）
+                    pl_values = dollar_df_data_calc[pl_col].dropna()
                     win_count = (pl_values > 0).sum()
                     lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
@@ -800,20 +805,20 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{trade_count}回")
                     
-                    cumulative_chart = create_cumulative_pl_chart(dollar_df, "USD")
+                    cumulative_chart = create_cumulative_pl_chart(dollar_df_data, "USD")
                     if cumulative_chart is not None:
                         st.plotly_chart(cumulative_chart, use_container_width=True)
                     else:
                         st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
                     
-                    ticker_chart = create_ticker_pl_chart(dollar_df, "USD")
+                    ticker_chart = create_ticker_pl_chart(dollar_df_data, "USD")
                     if ticker_chart is not None:
                         st.plotly_chart(ticker_chart, use_container_width=True)
                     else:
                         st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
-                    # 個別株詳細分析
-                    display_ticker_details(dollar_df, "$", is_yen_base=False)
+                    # 個別株詳細分析（最終行を除いたデータを使用）
+                    display_ticker_details(dollar_df_data, "$", is_yen_base=False)
                     
                     with st.expander("📋 全データテーブル"):
                         st.dataframe(dollar_df, use_container_width=True)
