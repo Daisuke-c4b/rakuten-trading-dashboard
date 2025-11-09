@@ -250,27 +250,18 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
                 st.markdown("**📊 購入時**")
                 if is_yen_base:
                     st.metric("¥取得単価", f"¥{weighted_acq_price:,.2f}")
-                    if has_usd_data and acq_price_usd > 0:
-                        st.metric("$取得単価", f"${acq_price_usd:,.2f}")
-                    else:
-                        st.metric("$取得単価", "データなし")
                 else:
                     st.metric("$取得単価", f"${weighted_acq_price:,.2f}")
                 st.metric("購入株数", f"{total_quantity:,.0f}株")
             
             with col2:
                 st.markdown("**📉 売却時**")
-                if has_usd_data and weighted_sell_price_usd > 0:
-                    st.metric("$売却単価", f"${weighted_sell_price_usd:,.2f}")
-                elif is_yen_base:
-                    st.metric("$売却単価", "データなし")
+                if is_yen_base:
+                    st.metric("¥売却単価", f"¥{sell_price_yen:,.2f}")
                 else:
                     # ドルベースの場合は売却単価を計算
                     sell_price_base = total_sell_amount / total_quantity if total_quantity > 0 else 0
                     st.metric("$売却単価", f"${sell_price_base:,.2f}")
-                
-                if is_yen_base:
-                    st.metric("¥売却単価", f"¥{sell_price_yen:,.2f}")
                 st.metric("売却株数", f"{total_quantity:,.0f}株")
             
             with col3:
@@ -355,26 +346,17 @@ def display_ticker_details(df, currency_symbol, is_yen_base=True):
                             st.markdown("**📊 購入時**")
                             if is_yen_base:
                                 st.metric("¥取得単価", f"¥{date_weighted_acq:,.2f}")
-                                if date_has_usd and date_acq_usd > 0:
-                                    st.metric("$取得単価", f"${date_acq_usd:,.2f}")
-                                else:
-                                    st.metric("$取得単価", "データなし")
                             else:
                                 st.metric("$取得単価", f"${date_weighted_acq:,.2f}")
                             st.metric("購入株数", f"{date_quantity:,.0f}株")
                         
                         with d_col2:
                             st.markdown("**📉 売却時**")
-                            if date_has_usd and date_weighted_sell > 0:
-                                st.metric("$売却単価", f"${date_weighted_sell:,.2f}")
-                            elif is_yen_base:
-                                st.metric("$売却単価", "データなし")
+                            if is_yen_base:
+                                st.metric("¥売却単価", f"¥{date_sell_yen:,.2f}")
                             else:
                                 date_sell_price_base = date_sell_amount / date_quantity if date_quantity > 0 else 0
                                 st.metric("$売却単価", f"${date_sell_price_base:,.2f}")
-                            
-                            if is_yen_base:
-                                st.metric("¥売却単価", f"¥{date_sell_yen:,.2f}")
                             st.metric("売却株数", f"{date_quantity:,.0f}株")
                         
                         with d_col3:
@@ -432,13 +414,16 @@ def create_ticker_pl_chart(df, currency_label):
     
     colors = ['red' if x < 0 else 'green' for x in ticker_pl.values]
     
+    # USDの場合は小数点以下2桁、円の場合は整数で表示
+    text_format = '%{text:,.2f}' if currency_label == 'USD' else '%{text:,.0f}'
+    
     fig = go.Figure(go.Bar(
         x=ticker_pl.values,
         y=ticker_pl.index,
         orientation='h',
         marker=dict(color=colors),
         text=ticker_pl.values,
-        texttemplate='%{text:,.0f}',
+        texttemplate=text_format,
         textposition='outside'
     ))
     
@@ -682,44 +667,49 @@ def main():
             yen_df = load_realized_pl_csv(yen_csv)
             
             if yen_df is not None:
+                # 最終行は合計行なので除外
+                yen_df_data = yen_df.iloc[:-1].copy() if len(yen_df) > 1 else yen_df.copy()
+                
                 pl_col = None
                 for col in yen_df.columns:
-                    if '実現損益' in col or '損益' in col:
+                    if '実現損益' in col and '円' in col:
                         pl_col = col
                         break
                 
                 if pl_col:
-                    # 数値変換を一時的なコピーで行う
-                    yen_df_calc = yen_df.copy()
-                    yen_df_calc[pl_col] = pd.to_numeric(yen_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    # K列の最終行（合計行）から総実現損益を取得
+                    total_pl_str = str(yen_df[pl_col].iloc[-1])
+                    total_pl = pd.to_numeric(total_pl_str.replace(',', ''), errors='coerce')
+                    if pd.isna(total_pl):
+                        total_pl = 0
                     
-                    # NaN値を除外して計算
-                    pl_values = yen_df_calc[pl_col].dropna()
-                    total_pl = pl_values.sum()
-                    
-                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数
+                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行を除く）
                     ticker_col = None
-                    for col in yen_df.columns:
+                    for col in yen_df_data.columns:
                         if 'ティッカー' in col:
                             ticker_col = col
                             break
                     
                     execution_date_col = None
-                    for col in yen_df.columns:
+                    for col in yen_df_data.columns:
                         if '約定日' in col:
                             execution_date_col = col
                             break
                     
                     if ticker_col and execution_date_col:
-                        # ティッカー × 約定日でユニークにカウント
-                        trade_count = yen_df_calc[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                        # ティッカー × 約定日でユニークにカウント（最終行除外）
+                        trade_count = yen_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
                     else:
-                        # フォールバック：全行数
-                        trade_count = len(yen_df_calc)
+                        # フォールバック：全行数（最終行除外）
+                        trade_count = len(yen_df_data)
                     
                     # 平均損益 = 総実現損益 ÷ 取引回数
                     avg_pl = total_pl / trade_count if trade_count > 0 else 0
                     
+                    # 勝率計算（最終行を除くデータで計算）
+                    yen_df_data_calc = yen_df_data.copy()
+                    yen_df_data_calc[pl_col] = pd.to_numeric(yen_df_data_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    pl_values = yen_df_data_calc[pl_col].dropna()
                     win_count = (pl_values > 0).sum()
                     lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
@@ -734,20 +724,20 @@ def main():
                     with col4:
                         st.metric("取引回数", f"{trade_count}回")
                     
-                    cumulative_chart = create_cumulative_pl_chart(yen_df, "円")
+                    cumulative_chart = create_cumulative_pl_chart(yen_df_data, "円")
                     if cumulative_chart is not None:
                         st.plotly_chart(cumulative_chart, use_container_width=True)
                     else:
                         st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
                     
-                    ticker_chart = create_ticker_pl_chart(yen_df, "円")
+                    ticker_chart = create_ticker_pl_chart(yen_df_data, "円")
                     if ticker_chart is not None:
                         st.plotly_chart(ticker_chart, use_container_width=True)
                     else:
                         st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
-                    # 個別株詳細分析
-                    display_ticker_details(yen_df, "¥", is_yen_base=True)
+                    # 個別株詳細分析（最終行を除いたデータを使用）
+                    display_ticker_details(yen_df_data, "¥", is_yen_base=True)
                     
                     with st.expander("📋 全データテーブル"):
                         st.dataframe(yen_df, use_container_width=True)
