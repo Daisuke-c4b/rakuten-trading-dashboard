@@ -117,12 +117,18 @@ def create_ticker_pl_chart(df, currency_label):
             pl_col = col
             break
     
-    if pl_col is None or 'ティッカー' not in df.columns:
+    ticker_col = None
+    for col in df.columns:
+        if 'ティッカー' in col:
+            ticker_col = col
+            break
+    
+    if pl_col is None or ticker_col is None:
         return None
     
     df[pl_col] = pd.to_numeric(df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
     
-    ticker_pl = df.groupby('ティッカー')[pl_col].sum().sort_values()
+    ticker_pl = df.groupby(ticker_col)[pl_col].sum().sort_values()
     
     colors = ['red' if x < 0 else 'green' for x in ticker_pl.values]
     
@@ -410,7 +416,7 @@ def main():
                     if ticker_chart is not None:
                         st.plotly_chart(ticker_chart, use_container_width=True)
                     else:
-                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」列が含まれているか確認してください。")
+                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
                     with st.expander("📋 データテーブル"):
                         st.dataframe(yen_df, use_container_width=True)
@@ -455,7 +461,7 @@ def main():
                     if ticker_chart is not None:
                         st.plotly_chart(ticker_chart, use_container_width=True)
                     else:
-                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」列が含まれているか確認してください。")
+                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
                     with st.expander("📋 データテーブル"):
                         st.dataframe(dollar_df, use_container_width=True)
