@@ -53,18 +53,27 @@ Added November 2025 - Visualizes trading performance from CSV data:
    - Supports both yen-based (円ベース) and dollar-based (ドルベース) CSV files
    - Handles Shift-JIS encoding common in Japanese financial exports
    - Automatic date parsing and numeric conversion with comma handling
+   - Robust NaN handling for accurate calculations
 2. **Visualizations**:
    - **Cumulative P/L Chart**: Time-series line graph showing cumulative realized profit/loss progression
    - **Ticker P/L Analysis**: Horizontal bar chart displaying profit/loss by individual ticker symbol (color-coded: green for profits, red for losses)
 3. **Statistical Metrics**:
-   - Total realized P/L
+   - Total realized P/L (with NaN exclusion for accuracy)
    - Average P/L per trade
    - Win rate (percentage of profitable trades)
    - Total number of trades
-4. **Data Functions**:
+4. **Individual Stock Detail Analysis** (New):
+   - Expandable sections for each ticker showing:
+     - **Purchase Information**: USD/JPY acquisition price, purchase quantity
+     - **Sale Information**: USD/JPY sale price, sale quantity
+     - **Investment Results**: P/L, total acquisition cost, settlement amount, P/L rate
+   - Transaction history table per ticker
+   - Automated calculation of performance metrics per stock
+5. **Data Functions**:
    - `load_realized_pl_csv()`: Loads and parses CSV with Shift-JIS encoding, handles date columns
    - `create_cumulative_pl_chart()`: Generates interactive cumulative P/L visualization
    - `create_ticker_pl_chart()`: Creates ticker-wise P/L comparison chart
+   - `display_ticker_details()`: Displays detailed per-ticker analysis with purchase/sale/results metrics
 
 # External Dependencies
 

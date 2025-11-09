@@ -100,6 +100,196 @@ def create_cumulative_pl_chart(df, currency_label):
     return fig
 
 
+def display_ticker_details(df, currency_symbol, is_yen_base=True):
+    """
+    ティッカーごとの詳細情報を表示
+    
+    Args:
+        df: 実現損益データフレーム
+        currency_symbol: 通貨記号（¥ or $）
+        is_yen_base: 円ベースかどうか
+    """
+    ticker_col = None
+    for col in df.columns:
+        if 'ティッカー' in col:
+            ticker_col = col
+            break
+    
+    if ticker_col is None:
+        st.warning("⚠️ ティッカー列が見つかりません。")
+        return
+    
+    # ティッカーごとにグループ化
+    tickers = df[ticker_col].unique()
+    
+    st.subheader("📈 個別株詳細分析")
+    
+    for ticker in tickers:
+        ticker_data = df[df[ticker_col] == ticker].copy()
+        
+        # 銘柄名を取得
+        stock_name = ticker_data['銘柄名'].iloc[0] if '銘柄名' in ticker_data.columns else ticker
+        
+        with st.expander(f"**{ticker}** - {stock_name}"):
+            # 数値列の変換
+            for col in ticker_data.columns:
+                if any(keyword in col for keyword in ['単価', '額', '損益', '数量', '価額']):
+                    ticker_data[col] = pd.to_numeric(ticker_data[col].astype(str).str.replace(',', ''), errors='coerce')
+            
+            # 数量を取得
+            total_quantity = ticker_data['数量[株]'].sum() if '数量[株]' in ticker_data.columns else 0
+            
+            # 通貨固有の列を選択
+            if is_yen_base:
+                # 円ベースの場合
+                acq_price_col = [col for col in ticker_data.columns if '平均取得価額' in col and '円' in col]
+                sell_amount_col = [col for col in ticker_data.columns if '売却' in col and '額' in col and '円' in col]
+                pl_col = [col for col in ticker_data.columns if '実現損益' in col and '円' in col]
+            else:
+                # ドルベースの場合
+                acq_price_col = [col for col in ticker_data.columns if '平均取得価額' in col and 'USドル' in col]
+                sell_amount_col = [col for col in ticker_data.columns if '売却' in col and '額' in col and 'USドル' in col]
+                pl_col = [col for col in ticker_data.columns if '実現損益' in col and 'USドル' in col]
+            
+            # フォールバック：通貨指定がない場合は最初の一致する列を使用
+            if not acq_price_col:
+                acq_price_col = [col for col in ticker_data.columns if '平均取得価額' in col]
+            if not sell_amount_col:
+                sell_amount_col = [col for col in ticker_data.columns if '売却' in col and '額' in col]
+            if not pl_col:
+                pl_col = [col for col in ticker_data.columns if '実現損益' in col]
+            
+            # 売却単価（USD）列を取得
+            sell_price_usd_col = [col for col in ticker_data.columns if '売却' in col and 'USドル' in col and '単価' in col]
+            
+            # ドルベース売却額列を取得（為替レート推定用）
+            sell_amount_usd_col = [col for col in ticker_data.columns if '売却' in col and '額' in col and 'USドル' in col]
+            
+            # 数量加重平均で取得価格を計算
+            # CSVの「平均取得価額」は各行で既に加重平均されているが、複数行がある場合は数量加重平均が必要
+            if acq_price_col and '数量[株]' in ticker_data.columns:
+                quantities = ticker_data['数量[株]']
+                acq_prices = ticker_data[acq_price_col[0]]
+                # 取得総額 = Σ(平均取得価額 × 数量) を計算してから総数量で割る
+                total_acq_amount = (acq_prices * quantities).sum()
+                weighted_acq_price = total_acq_amount / quantities.sum() if quantities.sum() > 0 else 0
+            else:
+                weighted_acq_price = 0
+                total_acq_amount = 0
+            
+            # 数量加重平均で売却単価（USD）を計算
+            if sell_price_usd_col and '数量[株]' in ticker_data.columns:
+                quantities = ticker_data['数量[株]']
+                prices = ticker_data[sell_price_usd_col[0]]
+                weighted_sell_price_usd = (prices * quantities).sum() / quantities.sum() if quantities.sum() > 0 else 0
+            else:
+                weighted_sell_price_usd = 0
+            
+            # 取得総額を計算
+            total_acquisition = weighted_acq_price * total_quantity
+            
+            # 受渡金額（売却額の合計）
+            total_sell_amount = ticker_data[sell_amount_col[0]].sum() if sell_amount_col else 0
+            
+            # ドルベース売却額の合計（為替レート推定用）
+            total_sell_amount_usd = ticker_data[sell_amount_usd_col[0]].sum() if sell_amount_usd_col else 0
+            
+            # 実現損益
+            total_pl = ticker_data[pl_col[0]].sum() if pl_col else 0
+            
+            # 損益率を計算
+            pl_rate = (total_pl / total_acquisition * 100) if total_acquisition != 0 else 0
+            
+            # 為替レートを推定（円ベースの場合）
+            has_usd_data = False
+            if is_yen_base:
+                # 円ベース売却額（円）÷ ドルベース売却額（USD）で為替レートを推定
+                if total_sell_amount_usd > 0:
+                    estimated_exchange_rate = total_sell_amount / total_sell_amount_usd
+                    has_usd_data = True
+                elif sell_price_usd_col:
+                    # 売却単価からも為替レートを推定可能
+                    # 売却額（円）= 売却単価（USD）× 数量 × 為替レート
+                    # → 為替レート = 売却額（円）÷（売却単価（USD）× 数量）
+                    if weighted_sell_price_usd > 0 and total_quantity > 0:
+                        estimated_exchange_rate = total_sell_amount / (weighted_sell_price_usd * total_quantity)
+                        has_usd_data = True
+                    else:
+                        estimated_exchange_rate = 0
+                else:
+                    # USDデータが全くない場合
+                    estimated_exchange_rate = 0
+                
+                # USD取得単価を計算（為替レートが推定できた場合のみ）
+                if has_usd_data and estimated_exchange_rate > 0:
+                    acq_price_usd = weighted_acq_price / estimated_exchange_rate
+                else:
+                    acq_price_usd = 0
+                
+                # 円での売却単価を計算
+                sell_price_yen = total_sell_amount / total_quantity if total_quantity > 0 else 0
+                
+                # USD売却単価が取得できなかった場合は為替レートから推定
+                if weighted_sell_price_usd == 0 and sell_price_yen > 0 and estimated_exchange_rate > 0:
+                    weighted_sell_price_usd = sell_price_yen / estimated_exchange_rate
+            else:
+                # ドルベースの場合
+                acq_price_usd = weighted_acq_price
+                sell_price_yen = 0
+                has_usd_data = True  # ドルベースは常にUSDデータがある
+            
+            # 3列レイアウト
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("**📊 購入時**")
+                if is_yen_base:
+                    st.metric("¥取得単価", f"¥{weighted_acq_price:,.2f}")
+                    if has_usd_data and acq_price_usd > 0:
+                        st.metric("$取得単価", f"${acq_price_usd:,.2f}")
+                    else:
+                        st.metric("$取得単価", "データなし")
+                else:
+                    st.metric("$取得単価", f"${weighted_acq_price:,.2f}")
+                st.metric("購入株数", f"{total_quantity:,.0f}株")
+            
+            with col2:
+                st.markdown("**📉 売却時**")
+                if has_usd_data and weighted_sell_price_usd > 0:
+                    st.metric("$売却単価", f"${weighted_sell_price_usd:,.2f}")
+                elif is_yen_base:
+                    st.metric("$売却単価", "データなし")
+                else:
+                    # ドルベースの場合は売却単価を計算
+                    sell_price_base = total_sell_amount / total_quantity if total_quantity > 0 else 0
+                    st.metric("$売却単価", f"${sell_price_base:,.2f}")
+                
+                if is_yen_base:
+                    st.metric("¥売却単価", f"¥{sell_price_yen:,.2f}")
+                st.metric("売却株数", f"{total_quantity:,.0f}株")
+            
+            with col3:
+                st.markdown("**💰 投資結果**")
+                st.metric("損益", f"{currency_symbol}{total_pl:,.2f}", delta=f"{pl_rate:,.2f}%")
+                st.metric("取得総額", f"{currency_symbol}{total_acquisition:,.2f}")
+                st.metric("受渡金額", f"{currency_symbol}{total_sell_amount:,.2f}")
+                st.metric("損益率", f"{pl_rate:,.2f}%")
+            
+            # 取引履歴テーブル
+            st.markdown("**📋 取引履歴**")
+            display_cols = ['約定日', '受渡日', '数量[株]', '売却/決済単価[USドル]']
+            display_cols = [col for col in display_cols if col in ticker_data.columns]
+            
+            if pl_col:
+                display_cols.append(pl_col[0])
+            if sell_amount_col:
+                display_cols.append(sell_amount_col[0])
+            if acq_price_col:
+                display_cols.append(acq_price_col[0])
+            
+            st.dataframe(ticker_data[display_cols], use_container_width=True, hide_index=True)
+
+
 def create_ticker_pl_chart(df, currency_label):
     """
     銘柄別実現損益のグラフを作成
@@ -126,9 +316,10 @@ def create_ticker_pl_chart(df, currency_label):
     if pl_col is None or ticker_col is None:
         return None
     
-    df[pl_col] = pd.to_numeric(df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+    df_copy = df.copy()
+    df_copy[pl_col] = pd.to_numeric(df_copy[pl_col].astype(str).str.replace(',', ''), errors='coerce')
     
-    ticker_pl = df.groupby(ticker_col)[pl_col].sum().sort_values()
+    ticker_pl = df_copy.groupby(ticker_col)[pl_col].sum().sort_values()
     
     colors = ['red' if x < 0 else 'green' for x in ticker_pl.values]
     
@@ -389,11 +580,16 @@ def main():
                         break
                 
                 if pl_col:
-                    yen_df[pl_col] = pd.to_numeric(yen_df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
-                    total_pl = yen_df[pl_col].sum()
-                    avg_pl = yen_df[pl_col].mean()
-                    win_count = (yen_df[pl_col] > 0).sum()
-                    lose_count = (yen_df[pl_col] < 0).sum()
+                    # 数値変換を一時的なコピーで行う
+                    yen_df_calc = yen_df.copy()
+                    yen_df_calc[pl_col] = pd.to_numeric(yen_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    
+                    # NaN値を除外して計算
+                    pl_values = yen_df_calc[pl_col].dropna()
+                    total_pl = pl_values.sum()
+                    avg_pl = pl_values.mean()
+                    win_count = (pl_values > 0).sum()
+                    lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
                     
                     col1, col2, col3, col4 = st.columns(4)
@@ -418,7 +614,10 @@ def main():
                     else:
                         st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
-                    with st.expander("📋 データテーブル"):
+                    # 個別株詳細分析
+                    display_ticker_details(yen_df, "¥", is_yen_base=True)
+                    
+                    with st.expander("📋 全データテーブル"):
                         st.dataframe(yen_df, use_container_width=True)
         
         if dollar_csv is not None:
@@ -434,11 +633,16 @@ def main():
                         break
                 
                 if pl_col:
-                    dollar_df[pl_col] = pd.to_numeric(dollar_df[pl_col].astype(str).str.replace(',', ''), errors='coerce')
-                    total_pl = dollar_df[pl_col].sum()
-                    avg_pl = dollar_df[pl_col].mean()
-                    win_count = (dollar_df[pl_col] > 0).sum()
-                    lose_count = (dollar_df[pl_col] < 0).sum()
+                    # 数値変換を一時的なコピーで行う
+                    dollar_df_calc = dollar_df.copy()
+                    dollar_df_calc[pl_col] = pd.to_numeric(dollar_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                    
+                    # NaN値を除外して計算
+                    pl_values = dollar_df_calc[pl_col].dropna()
+                    total_pl = pl_values.sum()
+                    avg_pl = pl_values.mean()
+                    win_count = (pl_values > 0).sum()
+                    lose_count = (pl_values < 0).sum()
                     win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
                     
                     col1, col2, col3, col4 = st.columns(4)
@@ -463,7 +667,10 @@ def main():
                     else:
                         st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
                     
-                    with st.expander("📋 データテーブル"):
+                    # 個別株詳細分析
+                    display_ticker_details(dollar_df, "$", is_yen_base=False)
+                    
+                    with st.expander("📋 全データテーブル"):
                         st.dataframe(dollar_df, use_container_width=True)
         
         if yen_csv is None and dollar_csv is None:
