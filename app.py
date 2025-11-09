@@ -688,190 +688,192 @@ def main():
         
         st.divider()
         
-        if yen_csv is not None:
-            st.subheader("📊 円ベース実現損益分析")
-            
-            yen_df = load_realized_pl_csv(yen_csv)
-            
-            if yen_df is not None:
-                # 最終行は合計行なので除外
-                yen_df_data = yen_df.iloc[:-1].copy() if len(yen_df) > 1 else yen_df.copy()
-                
-                pl_col = None
-                for col in yen_df.columns:
-                    if '実現損益' in col and '円' in col:
-                        pl_col = col
-                        break
-                
-                if pl_col:
-                    # K列の最終行（合計行）から総実現損益を取得
-                    total_pl_str = str(yen_df[pl_col].iloc[-1])
-                    total_pl = pd.to_numeric(total_pl_str.replace(',', ''), errors='coerce')
-                    if pd.isna(total_pl):
-                        total_pl = 0
-                    
-                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行を除く）
-                    ticker_col = None
-                    for col in yen_df_data.columns:
-                        if 'ティッカー' in col:
-                            ticker_col = col
-                            break
-                    
-                    execution_date_col = None
-                    for col in yen_df_data.columns:
-                        if '約定日' in col:
-                            execution_date_col = col
-                            break
-                    
-                    if ticker_col and execution_date_col:
-                        # ティッカー × 約定日でユニークにカウント（最終行除外）
-                        trade_count = yen_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
-                    else:
-                        # フォールバック：全行数（最終行除外）
-                        trade_count = len(yen_df_data)
-                    
-                    # 平均損益 = 総実現損益 ÷ 取引回数
-                    avg_pl = total_pl / trade_count if trade_count > 0 else 0
-                    
-                    # 勝率計算（最終行を除くデータで計算）
-                    yen_df_data_calc = yen_df_data.copy()
-                    yen_df_data_calc[pl_col] = pd.to_numeric(yen_df_data_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
-                    pl_values = yen_df_data_calc[pl_col].dropna()
-                    win_count = (pl_values > 0).sum()
-                    lose_count = (pl_values < 0).sum()
-                    win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("総実現損益", f"¥{total_pl:,.0f}")
-                    with col2:
-                        st.metric("平均損益", f"¥{avg_pl:,.0f}")
-                    with col3:
-                        st.metric("勝率", f"{win_rate:.1f}%")
-                    with col4:
-                        st.metric("取引回数", f"{trade_count}回")
-                    
-                    # 累積損益グラフのグループ化選択
-                    st.subheader("📊 累積実現損益の推移")
-                    grouping_yen = st.radio(
-                        "表示単位を選択",
-                        options=['daily', 'monthly', 'yearly'],
-                        format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
-                        key='grouping_yen',
-                        horizontal=True
-                    )
-                    
-                    cumulative_chart = create_cumulative_pl_chart(yen_df_data, "円", grouping=grouping_yen)
-                    if cumulative_chart is not None:
-                        st.plotly_chart(cumulative_chart, use_container_width=True)
-                    else:
-                        st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
-                    
-                    ticker_chart = create_ticker_pl_chart(yen_df_data, "円")
-                    if ticker_chart is not None:
-                        st.plotly_chart(ticker_chart, use_container_width=True)
-                    else:
-                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
-                    
-                    # 個別株詳細分析（最終行を除いたデータを使用）
-                    display_ticker_details(yen_df_data, "¥", is_yen_base=True)
-                    
-                    with st.expander("📋 全データテーブル"):
-                        st.dataframe(yen_df, use_container_width=True)
+        # タブで円ベース・ドルベースを切り替え
+        yen_tab, dollar_tab = st.tabs(["円ベース", "ドルベース"])
         
-        if dollar_csv is not None:
-            st.subheader("📊 ドルベース実現損益分析")
-            
-            dollar_df = load_realized_pl_csv(dollar_csv)
-            
-            if dollar_df is not None:
-                pl_col = None
-                for col in dollar_df.columns:
-                    if '実現損益' in col or '損益' in col:
-                        pl_col = col
-                        break
+        with yen_tab:
+            if yen_csv is not None:
+                yen_df = load_realized_pl_csv(yen_csv)
                 
-                if pl_col:
-                    # 数値変換を一時的なコピーで行う
-                    dollar_df_calc = dollar_df.copy()
-                    dollar_df_calc[pl_col] = pd.to_numeric(dollar_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                if yen_df is not None:
+                    # 最終行は合計行なので除外
+                    yen_df_data = yen_df.iloc[:-1].copy() if len(yen_df) > 1 else yen_df.copy()
                     
-                    # 総実現損益：K列の最終行から取得
-                    total_pl = dollar_df_calc[pl_col].iloc[-1] if len(dollar_df_calc) > 0 else 0
-                    
-                    # 最終行を除いたデータで各種計算を行う
-                    dollar_df_data = dollar_df.iloc[:-1].copy()
-                    dollar_df_data_calc = dollar_df_calc.iloc[:-1].copy()
-                    
-                    # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行除く）
-                    ticker_col = None
-                    for col in dollar_df.columns:
-                        if 'ティッカー' in col:
-                            ticker_col = col
+                    pl_col = None
+                    for col in yen_df.columns:
+                        if '実現損益' in col and '円' in col:
+                            pl_col = col
                             break
                     
-                    execution_date_col = None
-                    for col in dollar_df.columns:
-                        if '約定日' in col:
-                            execution_date_col = col
-                            break
-                    
-                    if ticker_col and execution_date_col:
-                        # ティッカー × 約定日でユニークにカウント（最終行を除く）
-                        trade_count = dollar_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
-                    else:
-                        # フォールバック：全行数（最終行を除く）
-                        trade_count = len(dollar_df_data)
-                    
-                    # 平均損益 = 総実現損益 ÷ 取引回数
-                    avg_pl = total_pl / trade_count if trade_count > 0 else 0
-                    
-                    # 勝率計算（最終行を除いたデータで計算）
-                    pl_values = dollar_df_data_calc[pl_col].dropna()
-                    win_count = (pl_values > 0).sum()
-                    lose_count = (pl_values < 0).sum()
-                    win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("総実現損益", f"${total_pl:,.2f}")
-                    with col2:
-                        st.metric("平均損益", f"${avg_pl:,.2f}")
-                    with col3:
-                        st.metric("勝率", f"{win_rate:.1f}%")
-                    with col4:
-                        st.metric("取引回数", f"{trade_count}回")
-                    
-                    # 累積損益グラフのグループ化選択
-                    st.subheader("📊 累積実現損益の推移")
-                    grouping_dollar = st.radio(
-                        "表示単位を選択",
-                        options=['daily', 'monthly', 'yearly'],
-                        format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
-                        key='grouping_dollar',
-                        horizontal=True
-                    )
-                    
-                    cumulative_chart = create_cumulative_pl_chart(dollar_df_data, "USD", grouping=grouping_dollar)
-                    if cumulative_chart is not None:
-                        st.plotly_chart(cumulative_chart, use_container_width=True)
-                    else:
-                        st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
-                    
-                    ticker_chart = create_ticker_pl_chart(dollar_df_data, "USD")
-                    if ticker_chart is not None:
-                        st.plotly_chart(ticker_chart, use_container_width=True)
-                    else:
-                        st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
-                    
-                    # 個別株詳細分析（最終行を除いたデータを使用）
-                    display_ticker_details(dollar_df_data, "$", is_yen_base=False)
-                    
-                    with st.expander("📋 全データテーブル"):
-                        st.dataframe(dollar_df, use_container_width=True)
+                    if pl_col:
+                        # K列の最終行（合計行）から総実現損益を取得
+                        total_pl_str = str(yen_df[pl_col].iloc[-1])
+                        total_pl = pd.to_numeric(total_pl_str.replace(',', ''), errors='coerce')
+                        if pd.isna(total_pl):
+                            total_pl = 0
+                        
+                        # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行を除く）
+                        ticker_col = None
+                        for col in yen_df_data.columns:
+                            if 'ティッカー' in col:
+                                ticker_col = col
+                                break
+                        
+                        execution_date_col = None
+                        for col in yen_df_data.columns:
+                            if '約定日' in col:
+                                execution_date_col = col
+                                break
+                        
+                        if ticker_col and execution_date_col:
+                            # ティッカー × 約定日でユニークにカウント（最終行除外）
+                            trade_count = yen_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                        else:
+                            # フォールバック：全行数（最終行除外）
+                            trade_count = len(yen_df_data)
+                        
+                        # 平均損益 = 総実現損益 ÷ 取引回数
+                        avg_pl = total_pl / trade_count if trade_count > 0 else 0
+                        
+                        # 勝率計算（最終行を除くデータで計算）
+                        yen_df_data_calc = yen_df_data.copy()
+                        yen_df_data_calc[pl_col] = pd.to_numeric(yen_df_data_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                        pl_values = yen_df_data_calc[pl_col].dropna()
+                        win_count = (pl_values > 0).sum()
+                        lose_count = (pl_values < 0).sum()
+                        win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("総実現損益", f"¥{total_pl:,.0f}")
+                        with col2:
+                            st.metric("平均損益", f"¥{avg_pl:,.0f}")
+                        with col3:
+                            st.metric("勝率", f"{win_rate:.1f}%")
+                        with col4:
+                            st.metric("取引回数", f"{trade_count}回")
+                        
+                        # 累積損益グラフのグループ化選択
+                        st.subheader("📊 累積実現損益の推移")
+                        grouping_yen = st.radio(
+                            "表示単位を選択",
+                            options=['daily', 'monthly', 'yearly'],
+                            format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
+                            key='grouping_yen',
+                            horizontal=True
+                        )
+                        
+                        cumulative_chart = create_cumulative_pl_chart(yen_df_data, "円", grouping=grouping_yen)
+                        if cumulative_chart is not None:
+                            st.plotly_chart(cumulative_chart, use_container_width=True)
+                        else:
+                            st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
+                        
+                        ticker_chart = create_ticker_pl_chart(yen_df_data, "円")
+                        if ticker_chart is not None:
+                            st.plotly_chart(ticker_chart, use_container_width=True)
+                        else:
+                            st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
+                        
+                        # 個別株詳細分析（最終行を除いたデータを使用）
+                        display_ticker_details(yen_df_data, "¥", is_yen_base=True)
+                        
+                        with st.expander("📋 全データテーブル"):
+                            st.dataframe(yen_df, use_container_width=True)
+            else:
+                st.info("💡 円ベースのCSVファイルをアップロードして、実現損益を分析してください。")
         
-        if yen_csv is None and dollar_csv is None:
-            st.info("💡 円ベースまたはドルベースのCSVファイルをアップロードして、実現損益を分析してください。")
+        with dollar_tab:
+            if dollar_csv is not None:
+                dollar_df = load_realized_pl_csv(dollar_csv)
+                
+                if dollar_df is not None:
+                    pl_col = None
+                    for col in dollar_df.columns:
+                        if '実現損益' in col or '損益' in col:
+                            pl_col = col
+                            break
+                    
+                    if pl_col:
+                        # 数値変換を一時的なコピーで行う
+                        dollar_df_calc = dollar_df.copy()
+                        dollar_df_calc[pl_col] = pd.to_numeric(dollar_df_calc[pl_col].astype(str).str.replace(',', ''), errors='coerce')
+                        
+                        # 総実現損益：K列の最終行から取得
+                        total_pl = dollar_df_calc[pl_col].iloc[-1] if len(dollar_df_calc) > 0 else 0
+                        
+                        # 最終行を除いたデータで各種計算を行う
+                        dollar_df_data = dollar_df.iloc[:-1].copy()
+                        dollar_df_data_calc = dollar_df_calc.iloc[:-1].copy()
+                        
+                        # 取引回数：ティッカー × 約定日のユニークな組み合わせ数（最終行除く）
+                        ticker_col = None
+                        for col in dollar_df.columns:
+                            if 'ティッカー' in col:
+                                ticker_col = col
+                                break
+                        
+                        execution_date_col = None
+                        for col in dollar_df.columns:
+                            if '約定日' in col:
+                                execution_date_col = col
+                                break
+                        
+                        if ticker_col and execution_date_col:
+                            # ティッカー × 約定日でユニークにカウント（最終行を除く）
+                            trade_count = dollar_df_data[[ticker_col, execution_date_col]].drop_duplicates().shape[0]
+                        else:
+                            # フォールバック：全行数（最終行を除く）
+                            trade_count = len(dollar_df_data)
+                        
+                        # 平均損益 = 総実現損益 ÷ 取引回数
+                        avg_pl = total_pl / trade_count if trade_count > 0 else 0
+                        
+                        # 勝率計算（最終行を除いたデータで計算）
+                        pl_values = dollar_df_data_calc[pl_col].dropna()
+                        win_count = (pl_values > 0).sum()
+                        lose_count = (pl_values < 0).sum()
+                        win_rate = (win_count / (win_count + lose_count) * 100) if (win_count + lose_count) > 0 else 0
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("総実現損益", f"${total_pl:,.2f}")
+                        with col2:
+                            st.metric("平均損益", f"${avg_pl:,.2f}")
+                        with col3:
+                            st.metric("勝率", f"{win_rate:.1f}%")
+                        with col4:
+                            st.metric("取引回数", f"{trade_count}回")
+                        
+                        # 累積損益グラフのグループ化選択
+                        st.subheader("📊 累積実現損益の推移")
+                        grouping_dollar = st.radio(
+                            "表示単位を選択",
+                            options=['daily', 'monthly', 'yearly'],
+                            format_func=lambda x: {'daily': '日次', 'monthly': '月次', 'yearly': '年次'}[x],
+                            key='grouping_dollar',
+                            horizontal=True
+                        )
+                        
+                        cumulative_chart = create_cumulative_pl_chart(dollar_df_data, "USD", grouping=grouping_dollar)
+                        if cumulative_chart is not None:
+                            st.plotly_chart(cumulative_chart, use_container_width=True)
+                        else:
+                            st.warning("⚠️ 累積損益グラフを作成できませんでした。CSVファイルに「約定日」列が含まれているか確認してください。")
+                        
+                        ticker_chart = create_ticker_pl_chart(dollar_df_data, "USD")
+                        if ticker_chart is not None:
+                            st.plotly_chart(ticker_chart, use_container_width=True)
+                        else:
+                            st.warning("⚠️ 銘柄別損益グラフを作成できませんでした。CSVファイルに「ティッカー」または「ティッカーコード」列が含まれているか確認してください。")
+                        
+                        # 個別株詳細分析（最終行を除いたデータを使用）
+                        display_ticker_details(dollar_df_data, "$", is_yen_base=False)
+                        
+                        with st.expander("📋 全データテーブル"):
+                            st.dataframe(dollar_df, use_container_width=True)
+            else:
+                st.info("💡 ドルベースのCSVファイルをアップロードして、実現損益を分析してください。")
     
     # サイドバーに使い方を表示
     with st.sidebar:
