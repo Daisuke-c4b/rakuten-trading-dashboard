@@ -9,16 +9,21 @@ from io import StringIO
 
 # Gemini API setup (using Streamlit Cloud Secrets)
 # Streamlit Cloudでは st.secrets を使用して環境変数を管理
-def get_gemini_client():
-    """Gemini APIクライアントを取得"""
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        return genai.Client(api_key=api_key)
-    except KeyError:
-        st.error("⚠️ GEMINI_API_KEY が設定されていません。Streamlit Cloudのシークレット設定を確認してください。")
-        return None
+# クライアントは遅延初期化（使用時に初めて作成）
 
-client = get_gemini_client()
+@st.cache_resource
+def get_gemini_client():
+    """Gemini APIクライアントを取得（遅延初期化）"""
+    try:
+        # st.secrets.get()を使用して安全にアクセス
+        if "GEMINI_API_KEY" not in st.secrets:
+            return None
+        api_key = st.secrets["GEMINI_API_KEY"]
+        if api_key == "your-gemini-api-key-here" or not api_key:
+            return None
+        return genai.Client(api_key=api_key)
+    except Exception:
+        return None
 
 
 def load_realized_pl_csv(uploaded_file, encoding='shift-jis'):
@@ -478,8 +483,9 @@ def analyze_chart_image(image_bytes: bytes, timeframe: str, mime_type: str = "im
     Returns:
         分析結果のテキスト
     """
+    client = get_gemini_client()
     if client is None:
-        return "❌ Gemini APIクライアントが初期化されていません。シークレット設定を確認してください。"
+        return "❌ Gemini APIクライアントが初期化されていません。Streamlit Cloudのシークレット設定で GEMINI_API_KEY を設定してください。"
     
     prompt = f"""
 あなたは経験豊富なテクニカルアナリストです。以下の{timeframe}チャート画像を詳細に分析してください。
