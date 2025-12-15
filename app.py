@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,17 +7,18 @@ from google.genai import types
 from PIL import Image
 from io import StringIO
 
-# Gemini AI Integrations setup (using Replit AI Integrations)
-AI_INTEGRATIONS_GEMINI_API_KEY = os.environ.get("AI_INTEGRATIONS_GEMINI_API_KEY")
-AI_INTEGRATIONS_GEMINI_BASE_URL = os.environ.get("AI_INTEGRATIONS_GEMINI_BASE_URL")
+# Gemini API setup (using Streamlit Cloud Secrets)
+# Streamlit Cloudでは st.secrets を使用して環境変数を管理
+def get_gemini_client():
+    """Gemini APIクライアントを取得"""
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        return genai.Client(api_key=api_key)
+    except KeyError:
+        st.error("⚠️ GEMINI_API_KEY が設定されていません。Streamlit Cloudのシークレット設定を確認してください。")
+        return None
 
-client = genai.Client(
-    api_key=AI_INTEGRATIONS_GEMINI_API_KEY,
-    http_options={
-        'api_version': '',
-        'base_url': AI_INTEGRATIONS_GEMINI_BASE_URL   
-    }
-)
+client = get_gemini_client()
 
 
 def load_realized_pl_csv(uploaded_file, encoding='shift-jis'):
@@ -478,6 +478,9 @@ def analyze_chart_image(image_bytes: bytes, timeframe: str, mime_type: str = "im
     Returns:
         分析結果のテキスト
     """
+    if client is None:
+        return "❌ Gemini APIクライアントが初期化されていません。シークレット設定を確認してください。"
+    
     prompt = f"""
 あなたは経験豊富なテクニカルアナリストです。以下の{timeframe}チャート画像を詳細に分析してください。
 

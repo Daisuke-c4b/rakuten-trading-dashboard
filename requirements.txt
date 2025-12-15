@@ -1,0 +1,6 @@
+streamlit>=1.51.0
+pandas>=2.3.3
+plotly>=6.4.0
+google-genai>=1.49.0
+Pillow>=10.0.0
+
