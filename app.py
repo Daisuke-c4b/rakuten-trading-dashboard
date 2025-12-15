@@ -2,31 +2,51 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 from google import genai
 from google.genai import types
 from PIL import Image
 from io import StringIO
 
-# Gemini API setup (using Streamlit Cloud Secrets)
-# Streamlit Cloudでは st.secrets を使用して環境変数を管理
-# クライアントは遅延初期化（使用時に初めて作成）
+# Gemini API setup
+# 優先順位: 1. 環境変数 2. Streamlit secrets
 
-@st.cache_resource
-def get_gemini_client():
-    """Gemini APIクライアントを取得（遅延初期化）"""
+
+def get_api_key():
+    """APIキーを取得（環境変数優先、フォールバックでst.secrets）"""
+    # 1. 環境変数から取得を試みる
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key and api_key != "your-gemini-api-key-here":
+        return api_key
+    
+    # 2. Streamlit secretsから取得を試みる
     try:
-        # hasattrとgetを使用して安全にアクセス
-        api_key = st.secrets.get("GEMINI_API_KEY", None) if hasattr(st.secrets, 'get') else None
-        if api_key is None:
-            # 別の方法でも試す
-            try:
-                api_key = st.secrets["GEMINI_API_KEY"]
-            except (KeyError, FileNotFoundError):
-                return None
-        if not api_key or api_key == "your-gemini-api-key-here":
-            return None
+        api_key = st.secrets.get("GEMINI_API_KEY", None)
+        if api_key and api_key != "your-gemini-api-key-here":
+            return api_key
+    except (KeyError, FileNotFoundError, AttributeError):
+        pass
+    
+    # 3. 辞書形式でのアクセスを試みる
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        if api_key and api_key != "your-gemini-api-key-here":
+            return api_key
+    except (KeyError, FileNotFoundError):
+        pass
+    
+    return None
+
+
+def get_gemini_client():
+    """Gemini APIクライアントを取得"""
+    api_key = get_api_key()
+    if not api_key:
+        return None
+    try:
         return genai.Client(api_key=api_key)
-    except Exception:
+    except Exception as e:
+        st.error(f"Gemini APIクライアントの初期化に失敗: {str(e)}")
         return None
 
 
@@ -537,7 +557,7 @@ def analyze_chart_image(image_bytes: bytes, timeframe: str, mime_type: str = "im
     
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             contents=[
                 prompt,
                 types.Part(
