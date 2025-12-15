@@ -34,6 +34,8 @@ env/
 
 # Streamlit
 .streamlit/secrets.toml
+.streamlit/secrets.toml.bak
+.streamlit/*.bak
 
 # uv
 .uv/
