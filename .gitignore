@@ -45,3 +45,15 @@ Thumbs.db
 # Logs
 *.log
 
+# Replit
+.local/
+.replit
+replit.md
+
+# Sample data / Assets
+attached_assets/
+*.csv
+*.png
+*.jpg
+*.jpeg
+
