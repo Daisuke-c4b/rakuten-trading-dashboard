@@ -15,11 +15,15 @@ from io import StringIO
 def get_gemini_client():
     """Gemini APIクライアントを取得（遅延初期化）"""
     try:
-        # st.secrets.get()を使用して安全にアクセス
-        if "GEMINI_API_KEY" not in st.secrets:
-            return None
-        api_key = st.secrets["GEMINI_API_KEY"]
-        if api_key == "your-gemini-api-key-here" or not api_key:
+        # hasattrとgetを使用して安全にアクセス
+        api_key = st.secrets.get("GEMINI_API_KEY", None) if hasattr(st.secrets, 'get') else None
+        if api_key is None:
+            # 別の方法でも試す
+            try:
+                api_key = st.secrets["GEMINI_API_KEY"]
+            except (KeyError, FileNotFoundError):
+                return None
+        if not api_key or api_key == "your-gemini-api-key-here":
             return None
         return genai.Client(api_key=api_key)
     except Exception:
